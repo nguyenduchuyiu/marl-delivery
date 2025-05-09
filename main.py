@@ -1,8 +1,10 @@
 from env import Environment
 #from agent import Agents
-from greedyagent import GreedyAgents as Agents
+from agent import Agents as Agents
 
 import numpy as np
+import time
+import pygame
 
 if __name__=="__main__":
     import argparse
@@ -22,19 +24,41 @@ if __name__=="__main__":
                       seed = args.seed)
     
     state = env.reset()
-    agents = Agents()
+    agents = Agents(weights_path="ppo_delivery.zip")
     agents.init_agents(state)
-    print(state)
-    #env.render()
+    # print(state)
+    env.render()
     done = False
     t = 0
     while not done:
         actions = agents.get_actions(state)
+        print("Actions passed to env:", actions)
         next_state, reward, done, infos = env.step(actions)
         state = next_state
-        env.render()
+        env.render_pygame()
+        pygame.time.wait(100)  # 100 ms pause for visibility
         t += 1
+
+        delivered = sum(1 for p in env.packages if p.status == 'delivered')
+        waiting = sum(1 for p in env.packages if p.status == 'waiting')
+        in_transit = sum(1 for p in env.packages if p.status == 'in_transit')
+        total = len(env.packages)
+
+        print(f"Time step: {env.t}")
+        print(f"Total Reward: {env.total_reward}")
+        print(f"Packages: {delivered}/{total} delivered, {waiting} waiting, {in_transit} in transit")
+        for i, robot in enumerate(env.robots):
+            carrying = f"carrying package {robot.carrying}" if robot.carrying else "not carrying"
+            print(f"Robot {i}: position={robot.position}, {carrying}")
+
+        # Show upcoming packages (to be released in the next 3 timesteps)
+        upcoming = [p for p in env.packages if p.status == 'None' and env.t < p.start_time <= env.t+3]
+        if upcoming:
+            print("Upcoming packages in next 3 steps:")
+            for p in upcoming:
+                print(f"  Package {p.package_id} at {p.start} -> {p.target} (release at t={p.start_time}, deadline={p.deadline})")
 
     print("Episode finished")
     print("Total reward:", infos['total_reward'])
     print("Total time steps:", infos['total_time_steps'])
+    pygame.quit()

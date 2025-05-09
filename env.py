@@ -1,4 +1,5 @@
 import numpy as np
+import pygame
 
 class Robot: 
     def __init__(self, position): 
@@ -356,6 +357,103 @@ class Environment:
         for row in grid_copy:
             print('\t'.join(str(cell) for cell in row))
         
+    def render_pygame(self, cell_size=40):
+        import pygame
+
+        n_rows = len(self.grid)
+        n_cols = len(self.grid[0])
+        if not hasattr(self, '_pygame_initialized'):
+            pygame.init()
+            self._cell_size = cell_size
+            self._screen = pygame.display.set_mode(
+                (n_cols * cell_size, n_rows * cell_size)
+            )
+            pygame.display.set_caption("Grid Environment")
+            self._pygame_initialized = True
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+
+        self._screen.fill((30, 30, 30))  # Background
+
+        # Draw grid
+        for r in range(n_rows):
+            for c in range(n_cols):
+                rect = pygame.Rect(c*cell_size, r*cell_size, cell_size, cell_size)
+                if self.grid[r][c] == 1:
+                    pygame.draw.rect(self._screen, (100, 100, 100), rect)  # Wall
+                else:
+                    pygame.draw.rect(self._screen, (220, 220, 220), rect)  # Empty
+                pygame.draw.rect(self._screen, (180, 180, 180), rect, 1)  # Grid lines
+
+        # Draw package targets
+        for package in self.packages:
+            tr, tc = package.target
+            # Nếu đã giao hàng, tô màu xám, chưa giao thì màu đỏ
+            if package.status == 'delivered':
+                color = (150, 150, 150)
+            else:
+                color = (255, 0, 0)
+            rect = pygame.Rect(tc*cell_size+cell_size//3, tr*cell_size+cell_size//3, cell_size//3, cell_size//3)
+            pygame.draw.rect(self._screen, color, rect)
+
+        # Draw packages (green squares) - only those waiting to be picked up
+        for package in self.packages:
+            if package.status == 'waiting':
+                pr, pc = package.start
+                rect = pygame.Rect(pc*cell_size+cell_size//4, pr*cell_size+cell_size//4, cell_size//2, cell_size//2)
+                pygame.draw.rect(self._screen, (0, 200, 0), rect)
+
+        # Draw robots
+        for idx, robot in enumerate(self.robots):
+            r, c = robot.position
+            if robot.carrying:
+                color = (255, 140, 0)  # Orange for robot carrying a package
+            else:
+                color = (0, 128, 255)  # Blue for robot not carrying
+            center = (c*cell_size + cell_size//2, r*cell_size + cell_size//2)
+            pygame.draw.circle(self._screen, color, center, cell_size//3)
+            # Draw robot index
+            font = pygame.font.SysFont(None, 20)
+            text = font.render(str(idx), True, (255,255,255))
+            self._screen.blit(text, (center[0]-7, center[1]-10))
+
+            # Nếu robot đang mang hàng, vẽ thêm hình vuông nhỏ màu xanh lá ở góc phải bên dưới robot
+            if robot.carrying:
+                # Tìm package đang được robot này mang
+                for package in self.packages:
+                    if package.package_id == robot.carrying and package.status == 'in_transit':
+                        # Vẽ hình vuông nhỏ ở góc phải bên dưới
+                        rect = pygame.Rect(
+                            c*cell_size + cell_size - cell_size//4,
+                            r*cell_size + cell_size - cell_size//4,
+                            cell_size//5, cell_size//5
+                        )
+                        pygame.draw.rect(self._screen, (0, 200, 0), rect)
+                        break
+
+        # Overlay text info
+        font = pygame.font.SysFont(None, 24)
+        delivered = sum(1 for p in self.packages if p.status == 'delivered')
+        waiting = sum(1 for p in self.packages if p.status == 'waiting')
+        in_transit = sum(1 for p in self.packages if p.status == 'in_transit')
+        info_lines = [
+            f"Time: {self.t}",
+            f"Total Reward: {self.total_reward:.2f}",
+            f"Packages: {delivered}/{len(self.packages)} delivered, {waiting} waiting, {in_transit} in transit"
+        ]
+        for i, robot in enumerate(self.robots):
+            carrying = f"carrying {robot.carrying}" if robot.carrying else "empty"
+            info_lines.append(f"Robot {i}: {robot.position} {carrying}")
+
+        for i, line in enumerate(info_lines):
+            text = font.render(line, True, (255,255,255))
+            self._screen.blit(text, (5, 5 + 22*i))
+
+        pygame.display.flip()
+        pygame.time.wait(400)  # 400 ms pause for slower rendering
 
 if __name__=="__main__":
     env = Environment('map.txt', 10, 2, 5)
