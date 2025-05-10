@@ -1,5 +1,4 @@
 from env import Environment
-#from agent import Agents
 from agent import Agents as Agents
 
 import numpy as np
@@ -24,7 +23,8 @@ if __name__=="__main__":
                       seed = args.seed)
     
     state = env.reset()
-    agents = Agents(weights_path="ppo_delivery.zip")
+    observation_shape = (7, env.n_rows, env.n_cols)
+    agents = Agents(observation_shape, "models/qmix_agent.pt", "cuda")
     agents.init_agents(state)
     # print(state)
     env.render()
