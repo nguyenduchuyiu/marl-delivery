@@ -374,7 +374,7 @@ class Environment:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                exit()
+                # exit()
 
         self._screen.fill((30, 30, 30))  # Background
 
@@ -453,7 +453,7 @@ class Environment:
             self._screen.blit(text, (5, 5 + 22*i))
 
         pygame.display.flip()
-        pygame.time.wait(400)  # 400 ms pause for slower rendering
+        # pygame.time.wait(400)  # 400 ms pause for slower rendering
 
 if __name__=="__main__":
     env = Environment('map.txt', 10, 2, 5)

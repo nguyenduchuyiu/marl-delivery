@@ -39,97 +39,110 @@ class AgentNetwork(nn.Module):
         return q_values
 
 
-def convert_state(state, persistent_packages, current_robot_idx=None):
+def convert_state(state, persistent_packages, current_robot_idx):
     """
-    Convert state to a 2D multi-channel tensor.
-    - If current_robot_idx is not None: 8 channels (robot-specific obs)
-    - If current_robot_idx is None: 6 channels (global state)
+    Convert state to a 2D multi-channel tensor for a specific robot.
+    - 6 channels for robot-specific observation:
+        0. Map
+        1. Urgency of 'waiting' packages (if robot is not carrying)
+        2. Start positions of 'waiting' packages (if robot is not carrying)
+        3. Other robots' positions
+        4. Current robot's position
+        5. Current robot's carried package target (if robot is carrying)
+
+    Args:
+        state (dict): Raw state from the environment.
+                      Expected keys: "map", "robots", "time_step".
+                      state["robots"] is a list of tuples: (pos_x+1, pos_y+1, carrying_package_id)
+        persistent_packages (dict): Dictionary tracking all active packages.
+                                    Positions are 0-indexed.
+        current_robot_idx (int): Index of the current robot for which to generate the observation.
+
     Returns:
-        np.ndarray of shape (n_channels, n_rows, n_cols)
+        np.ndarray of shape (6, n_rows, n_cols)
     """
     grid = np.array(state["map"])
     n_rows, n_cols = grid.shape
-    n_channels = 8 if current_robot_idx is not None else 6
+    n_channels = 6
     tensor = np.zeros((n_channels, n_rows, n_cols), dtype=np.float32)
 
-    # 0. Map channel
+    # --- Channel 0: Map ---
     tensor[0] = grid
 
-    # 1. Urgency channel - uses persistent_packages (for 'waiting' packages at their start location)
-    current_time_step = state["time_step"][0] if isinstance(state["time_step"], np.ndarray) else state["time_step"]
-    for pkg_id, pkg_data in persistent_packages.items():
-        if pkg_data['status'] == 'waiting':
-            sr, sc = pkg_data['start_pos'] # 0-indexed
-            st = pkg_data['start_time']
-            dl = pkg_data['deadline']
-            urgency = max(0, min(1, (current_time_step - st) / (dl - st))) if dl > st else 0
-            if 0 <= sr < n_rows and 0 <= sc < n_cols: # Boundary check
-                tensor[1, sr, sc] = urgency
+    current_time_step = state["time_step"]
+    if isinstance(current_time_step, np.ndarray): # Handle case where time_step might be an array
+        current_time_step = current_time_step[0]
 
-    # 2. Start position channel - uses persistent_packages (presence of 'waiting' packages)
-    for pkg_id, pkg_data in persistent_packages.items():
-        if pkg_data['status'] == 'waiting':
-            sr, sc = pkg_data['start_pos'] # 0-indexed
-            if 0 <= sr < n_rows and 0 <= sc < n_cols: # Boundary check
-                tensor[2, sr, sc] = 1.0 # Mark presence
+    # Get current robot's data and determine if it's carrying a package
+    # Ensure current_robot_idx is valid
+    if current_robot_idx < 0 or current_robot_idx >= len(state["robots"]):
+        # This case should ideally be handled by the caller or indicate an error
+        # print(f"Warning: Invalid current_robot_idx {current_robot_idx}")
+        return tensor # Return empty tensor or handle error appropriately
 
-    # 3. Target position channel - uses persistent_packages (presence of 'waiting' or 'in_transit' package targets)
-    for pkg_id, pkg_data in persistent_packages.items():
-        if pkg_data['status'] in ['waiting', 'in_transit']:
-            tr, tc = pkg_data['target_pos'] # 0-indexed
-            if 0 <= tr < n_rows and 0 <= tc < n_cols: # Boundary check
-                tensor[3, tr, tc] = 1.0 # Mark presence
+    current_robot_data = state["robots"][current_robot_idx]
+    carried_pkg_id_by_current_robot = current_robot_data[2] # 1-indexed ID, 0 if not carrying
 
-    # 4. Robot carrying channel - uses state["robots"] (presence of any robot carrying a package)
-    # state["robots"] provides (pos_x+1, pos_y+1, carrying_package_id) - 1-indexed
-    for rob_idx, rob in enumerate(state["robots"]):
-        rr, rc, carrying_pkg_id = rob
-        rr_idx, rc_idx = int(rr)-1, int(rc)-1 # Convert to 0-indexed for tensor
-        if carrying_pkg_id != 0: # If carrying a package
-            if 0 <= rr_idx < n_rows and 0 <= rc_idx < n_cols: # Boundary check
-                tensor[4, rr_idx, rc_idx] = 1.0 # Mark presence
+    # --- Channel 1: Urgency of 'waiting' packages (if robot is not carrying) ---
+    # --- Channel 2: Start positions of 'waiting' packages (if robot is not carrying) ---
+    if carried_pkg_id_by_current_robot == 0: # Robot is NOT carrying a package
+        for pkg_id, pkg_data in persistent_packages.items():
+            if pkg_data['status'] == 'waiting':
+                sr, sc = pkg_data['start_pos']  # 0-indexed
+                st = pkg_data['start_time']
+                dl = pkg_data['deadline']
 
-    # 5. Robots' positions channel
-    if current_robot_idx is not None: # Robot-specific: Other robots' positions
-        for i, rob in enumerate(state["robots"]):
-            if i != current_robot_idx:
-                rr, rc, _ = rob
-                rr_idx, rc_idx = int(rr)-1, int(rc)-1 # 0-indexed
-                if 0 <= rr_idx < n_rows and 0 <= rc_idx < n_cols: # Boundary check
-                    tensor[5, rr_idx, rc_idx] = 1.0
-    else: # Global state: all robots' positions
-        for rob in state["robots"]:
-            rr, rc, _ = rob
-            rr_idx, rc_idx = int(rr)-1, int(rc)-1 # 0-indexed
-            if 0 <= rr_idx < n_rows and 0 <= rc_idx < n_cols: # Boundary check
-                tensor[5, rr_idx, rc_idx] = 1.0
+                # Check if package is active (start_time has passed)
+                if current_time_step >= st:
+                    # Channel 1: Urgency
+                    urgency = 0
+                    if dl > st: # Avoid division by zero or negative duration
+                        # Normalize urgency: 0 (just appeared) to 1 (deadline reached)
+                        # Cap at 1 if current_time_step exceeds deadline
+                        urgency = min(1.0, max(0.0, (current_time_step - st) / (dl - st)))
+                    elif dl == st: # Deadline is the start time
+                         urgency = 1.0 if current_time_step >= st else 0.0
+                    # else: dl < st, invalid, urgency remains 0
 
-    # --- Robot-specific channels (if current_robot_idx is not None) ---
-    if current_robot_idx is not None:
-        # 6. Current robot's position channel
-        rob = state["robots"][current_robot_idx]
-        rr, rc, _ = rob
-        rr_idx, rc_idx = int(rr)-1, int(rc)-1 # 0-indexed
+                    if 0 <= sr < n_rows and 0 <= sc < n_cols: # Boundary check
+                        tensor[1, sr, sc] = max(tensor[1, sr, sc], urgency) # Use max if multiple pkgs at same spot
+
+                    # Channel 2: Start position
+                    if 0 <= sr < n_rows and 0 <= sc < n_cols: # Boundary check
+                        tensor[2, sr, sc] = 1.0 # Mark presence
+    # If robot is carrying, channels 1 and 2 remain all zeros.
+
+    # --- Channel 3: Other robots' positions ---
+    for i, rob_data in enumerate(state["robots"]):
+        if i == current_robot_idx:
+            continue # Skip the current robot
+        rr, rc, _ = rob_data # Positions are 1-indexed from env
+        rr_idx, rc_idx = int(rr) - 1, int(rc) - 1 # Convert to 0-indexed
         if 0 <= rr_idx < n_rows and 0 <= rc_idx < n_cols: # Boundary check
-            tensor[6, rr_idx, rc_idx] = 1.0
+            tensor[3, rr_idx, rc_idx] = 1.0
 
-        # 7. Current Robot's Carried Package Target Position channel
-        current_robot_data = state["robots"][current_robot_idx]
-        carried_pkg_id_by_current_robot = current_robot_data[2] # 1-indexed ID, 0 if not carrying
+    # --- Channel 4: Current robot's position ---
+    # current_robot_data was fetched earlier
+    crr, crc, _ = current_robot_data # Positions are 1-indexed
+    crr_idx, crc_idx = int(crr) - 1, int(crc) - 1 # Convert to 0-indexed
+    if 0 <= crr_idx < n_rows and 0 <= crc_idx < n_cols: # Boundary check
+        tensor[4, crr_idx, crc_idx] = 1.0
 
-        if carried_pkg_id_by_current_robot != 0:
-            # Ensure the package ID from state['robots'] is valid and exists in persistent_packages
-            if carried_pkg_id_by_current_robot in persistent_packages:
-                pkg_data_carried = persistent_packages[carried_pkg_id_by_current_robot]
-                if pkg_data_carried['status'] == 'in_transit': # Make sure it's indeed in transit
-                    tr_carried, tc_carried = pkg_data_carried['target_pos'] # 0-indexed
-                    if 0 <= tr_carried < n_rows and 0 <= tc_carried < n_cols: # Boundary check
-                        tensor[7, tr_carried, tc_carried] = 1.0
-            # else:
-                # This case might indicate an inconsistency if a robot is carrying an ID
-                # not in persistent_packages. Should be handled by _update_persistent_packages.
-                # print(f"Warning: Robot {current_robot_idx} carrying pkg {carried_pkg_id_by_current_robot} not in persistent_packages.")
-
+    # --- Channel 5: Current robot's carried package target (if robot is carrying) ---
+    if carried_pkg_id_by_current_robot != 0:
+        # Ensure the package ID from state['robots'] is valid and exists in persistent_packages
+        if carried_pkg_id_by_current_robot in persistent_packages:
+            pkg_data_carried = persistent_packages[carried_pkg_id_by_current_robot]
+            # Double check status, though if robot carries it, it should be 'in_transit'
+            # or just became 'in_transit' in the persistent_packages update logic.
+            # For this observation, we primarily care about its target.
+            tr_carried, tc_carried = pkg_data_carried['target_pos'] # 0-indexed
+            if 0 <= tr_carried < n_rows and 0 <= tc_carried < n_cols: # Boundary check
+                tensor[5, tr_carried, tc_carried] = 1.0
+        # else:
+            # This case might indicate an inconsistency.
+            # print(f"Warning: Robot {current_robot_idx} carrying pkg {carried_pkg_id_by_current_robot} not in persistent_packages.")
+    # If robot is not carrying, channel 5 remains all zeros.
 
     return tensor
 
