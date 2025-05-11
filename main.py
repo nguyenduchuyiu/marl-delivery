@@ -1,5 +1,6 @@
 from env import Environment
 from agent import Agents as Agents
+from greedyagent import GreedyAgents as GreedyAgents
 
 import numpy as np
 import time
@@ -23,8 +24,9 @@ if __name__=="__main__":
                       seed = args.seed)
     
     state = env.reset()
-    observation_shape = (7, env.n_rows, env.n_cols)
+    observation_shape = (8, env.n_rows, env.n_cols)
     agents = Agents(observation_shape, "models/qmix_agent.pt", "cuda")
+    # agents = GreedyAgents()
     agents.init_agents(state)
     # print(state)
     env.render()
