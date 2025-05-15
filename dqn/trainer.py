@@ -2,9 +2,9 @@
 import pygame
 from networks import AgentNetwork, ReplayBuffer, convert_state, reward_shaping
 from env import Environment
+from env_vectorized import VectorizedEnv
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
 import numpy as np
@@ -12,6 +12,8 @@ import random
 import os
 from sklearn.calibration import LabelEncoder
 import matplotlib.pyplot as plt
+import copy
+
 
 
 SEED = 42
@@ -25,22 +27,36 @@ ACTION_DIM = 15
 NUM_AGENTS = 5
 MAP_FILE = "map1.txt"
 N_PACKAGES = 20
-MOVE_COST = -0.01
-DELIVERY_REWARD = 10
-DELAY_REWARD = 1
-MAX_TIME_STEPS = 100
+MOVE_COST = -0.1
+DELIVERY_REWARD = 0
+DELAY_REWARD = 0
+MAX_TIME_STEPS = 1000
 NUM_EPISODES = 1000
 BATCH_SIZE = 64
 GAMMA = 0.99
-LR = 1e-4
+LR = 5e-5
 WEIGHT_DECAY = 1e-4
-MAX_REPLAY_BUFFER_SIZE = 100000
+MAX_REPLAY_BUFFER_SIZE = 10000
 EPS_START = 1
 EPS_END = 0.1
-EPS_DECAY = 80
+EPS_DECAY = 1000
 TAU = 0.01
 GRADIENT_CLIPPING = 10
 
+NUM_ENVS = 4  # You can adjust this for your hardware
+
+# Replace single env with vectorized env
+vec_env = VectorizedEnv(
+    Environment, num_envs=NUM_ENVS,
+    map_file=MAP_FILE,
+    n_robots=NUM_AGENTS,
+    n_packages=N_PACKAGES,
+    move_cost=MOVE_COST,
+    delivery_reward=DELIVERY_REWARD,
+    delay_reward=DELAY_REWARD,
+    seed=SEED,
+    max_time_steps=MAX_TIME_STEPS
+)
 
 # Define the linear epsilon function
 def linear_epsilon(steps_done):
@@ -67,11 +83,13 @@ env = Environment(map_file=MAP_FILE,
 
 env.reset()
 
+
+
 class DQNTrainer:
-    def __init__(self, env, lr=LR, weight_decay=WEIGHT_DECAY, gamma=GAMMA, tau=TAU, gradient_clipping=GRADIENT_CLIPPING):
+    def __init__(self, env, lr=LR, weight_decay=WEIGHT_DECAY, gamma=GAMMA, tau=TAU, gradient_clipping=GRADIENT_CLIPPING, num_envs=1):
         self.env = env
-        OBS_DIM = (8, env.n_rows, env.n_cols ) # 7 channels: map, urgency, start position, target position, robot carrying, robot position, current robot position
-        STATE_DIM = (6, env.n_rows, env.n_cols) # 6 channels: map, urgency, start position, target position, robot carrying, robot position
+        self.num_envs = num_envs
+        OBS_DIM = (6, env.envs[0].n_rows, env.envs[0].n_cols) if hasattr(env, 'envs') else (6, env.n_rows, env.n_cols)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         # Initialize LabelEncoders for actions
@@ -213,84 +231,111 @@ class DQNTrainer:
 
 
     def run_episode(self, eps):
-        current_state_dict = self.env.reset()
-        self.persistent_packages = {}
-        self._update_persistent_packages(current_state_dict)
-        done = False
-        episode_reward = 0
-        episode_loss = 0
+        # Vectorized reset
+        current_state_dicts = self.env.reset()
+        persistent_packages_list = [{} for _ in range(self.num_envs)]
+        for i in range(self.num_envs):
+            self.persistent_packages = persistent_packages_list[i]
+            self._update_persistent_packages(current_state_dicts[i])
+
+        dones = [False] * self.num_envs
+        episode_rewards = [0.0] * self.num_envs
+        episode_losses = [0.0] * self.num_envs
         step_count = 0
 
-        while not done:
-            self.env.render_pygame()
-            # Build per-agent observations
-            actions = []
-            observations = []
-            env_actions = []
-            
-            for i in range(NUM_AGENTS):
-                obs = convert_state(current_state_dict, self.persistent_packages, current_robot_idx=i)
-                observations.append(obs)
-                action = self.select_action(obs, eps)
-                actions.append(action)
-            next_observations = []
-            prev_state_dict = current_state_dict
-            
-            # Take actions and get next state
-            for int_act in actions:
-                move_idx = int_act % self.NUM_MOVE_ACTIONS
-                pkg_op_idx = int_act // self.NUM_MOVE_ACTIONS
+        while not all(dones):
+            # Comment out rendering for speed
+            # self.env.render()
+            actions_batch = []
+            observations_batch = []
+            env_actions_batch = []
+            packages_before_action_batch = []
 
-                # Ensure pkg_op_idx is within bounds
-                if pkg_op_idx >= self.NUM_PKG_OPS:
-                    print(f"Warning: Decoded pkg_op_idx {pkg_op_idx} is out of bounds for action {int_act}. Max is {self.NUM_PKG_OPS-1}. Defaulting to op index 0.")
-                    pkg_op_idx = 0 # Default to the first package operation (e.g., 'None')
-                
-                move_str = self.le_move.inverse_transform([move_idx])[0]
-                pkg_op_str = self.le_pkg_op.inverse_transform([pkg_op_idx])[0]
-                env_actions.append((move_str, pkg_op_str))
-                
-                
-            current_state_dict, global_reward, done, _= self.env.step(env_actions)
-            individual_rewards = reward_shaping(global_reward, prev_state_dict, current_state_dict, env_actions, NUM_AGENTS)
-            self._update_persistent_packages(current_state_dict)
-            
-            # Build per-agent next observations
-            for i in range(NUM_AGENTS):
-                next_obs = convert_state(current_state_dict, self.persistent_packages, current_robot_idx=i)
-                next_observations.append(next_obs)
+            for env_idx in range(self.num_envs):
+                if dones[env_idx]:
+                    actions_batch.append([0]*NUM_AGENTS)
+                    observations_batch.append([np.zeros((6, self.env.envs[env_idx].n_rows, self.env.envs[env_idx].n_cols)) for _ in range(NUM_AGENTS)])
+                    env_actions_batch.append([('S', '0')]*NUM_AGENTS)
+                    packages_before_action_batch.append({})
+                    continue
 
-            # Store in buffer
-            for i in range(NUM_AGENTS):
-                self.buffer.add(
-                    obs=observations[i],
-                    action=actions[i],
-                    reward=individual_rewards[i],
-                    next_obs=next_observations[i],
-                    done=done
+                self.persistent_packages = persistent_packages_list[env_idx]
+                obs_list = []
+                act_list = []
+                for i in range(NUM_AGENTS):
+                    obs = convert_state(current_state_dicts[env_idx], self.persistent_packages, current_robot_idx=i)
+                    obs_list.append(obs)
+                    act = self.select_action(obs, eps)
+                    act_list.append(act)
+                observations_batch.append(obs_list)
+                actions_batch.append(act_list)
+                env_actions = []
+                for int_act in act_list:
+                    move_idx = int_act % self.NUM_MOVE_ACTIONS
+                    pkg_op_idx = int_act // self.NUM_MOVE_ACTIONS
+                    if pkg_op_idx >= self.NUM_PKG_OPS:
+                        pkg_op_idx = 0
+                    move_str = self.le_move.inverse_transform([move_idx])[0]
+                    pkg_op_str = self.le_pkg_op.inverse_transform([pkg_op_idx])[0]
+                    env_actions.append((move_str, pkg_op_str))
+                env_actions_batch.append(env_actions)
+                packages_before_action_batch.append(copy.deepcopy(self.persistent_packages))
+
+            # Step all envs
+            next_state_dicts, global_rewards, step_dones, _ = self.env.step(env_actions_batch)
+            for env_idx in range(self.num_envs):
+                if dones[env_idx]:
+                    continue
+                self.persistent_packages = persistent_packages_list[env_idx]
+                individual_rewards = reward_shaping(
+                    current_state_dicts[env_idx],
+                    next_state_dicts[env_idx],
+                    env_actions_batch[env_idx],
+                    packages_before_action_batch[env_idx],
+                    NUM_AGENTS
                 )
-
-            episode_reward += global_reward
+                self._update_persistent_packages(next_state_dicts[env_idx])
+                # Build per-agent next observations
+                next_obs_list = []
+                for i in range(NUM_AGENTS):
+                    next_obs = convert_state(next_state_dicts[env_idx], self.persistent_packages, current_robot_idx=i)
+                    next_obs_list.append(next_obs)
+                # Store in buffer
+                for i in range(NUM_AGENTS):
+                    self.buffer.add(
+                        obs=observations_batch[env_idx][i],
+                        action=actions_batch[env_idx][i],
+                        reward=individual_rewards[i],
+                        next_obs=next_obs_list[i],
+                        done=step_dones[env_idx]
+                    )
+                episode_rewards[env_idx] += global_rewards[env_idx]
+            current_state_dicts = next_state_dicts
+            dones = [d or sd for d, sd in zip(dones, step_dones)]
             step_count += 1
-
             # Training step
             loss = self.train_step(BATCH_SIZE)
             if loss is not None:
-                episode_loss += loss
+                for env_idx in range(self.num_envs):
+                    episode_losses[env_idx] += loss
+
+        avg_reward = np.mean(episode_rewards)
+        avg_loss = np.mean(episode_losses) / max(1, step_count)
+        return avg_reward, avg_loss
 
 
-        return episode_reward, episode_loss / max(1, step_count)
 
 if __name__ == "__main__":
     
-    trainer = DQNTrainer(env)
+    import pygame
+    trainer = DQNTrainer(vec_env, num_envs=NUM_ENVS)
 
     # Lists to store metrics for plotting
     episode_rewards_history = []
     episode_avg_loss_history = []
 
     training_completed_successfully = False
-    print("Starting QMIX training...")
+    print("Starting DQN training...")
     print(f"Running for {NUM_EPISODES} episodes.")
 
     try:

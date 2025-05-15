@@ -38,6 +38,36 @@ class AgentNetwork(nn.Module):
         q_values = self.fc2(x)
         return q_values
 
+class ActorNetwork(nn.Module):
+    def __init__(self, obs_shape, action_dim):
+        super(ActorNetwork, self).__init__()
+        # obs_shape is (C, H, W) e.g. (6, map_height, map_width)
+        self.conv1 = nn.Conv2d(obs_shape[0], 32, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+
+        # Calculate flattened size after conv layers
+        def conv_out_size(h_in, w_in):
+            # Assuming kernel=3, stride=1, padding=1 keeps H, W same
+            return h_in * w_in * 64
+
+        self.flattened_size = conv_out_size(obs_shape[1], obs_shape[2])
+        
+        self.fc1 = nn.Linear(self.flattened_size, 256)
+        self.actor_head = nn.Linear(256, action_dim)
+
+    def forward(self, obs):
+        # obs: (batch_size, C, H, W)
+        x = F.relu(self.bn1(self.conv1(obs)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = x.reshape(x.size(0), -1) # Flatten
+        x = F.relu(self.fc1(x))
+        action_logits = self.actor_head(x)
+        return action_logits
 
 def convert_state(state, persistent_packages, current_robot_idx):
     """
@@ -153,7 +183,7 @@ class Agents:
         # Joint action encoder
         self.le_move = LabelEncoder().fit(['S','L','R','U','D'])
         self.le_pkg  = LabelEncoder().fit(['0','1','2']) # Assuming '0' is None, '1' is Pickup, '2' is Drop
-        self.model = AgentNetwork(observation_shape, JOINT_ACTION_DIM).to(self.device) # Pass JOINT_ACTION_DIM
+        self.model = ActorNetwork(observation_shape, JOINT_ACTION_DIM).to(self.device) # Pass JOINT_ACTION_DIM
         if weights_path is not None:
             try:
                 # It's good practice to print a message before loading
@@ -236,7 +266,7 @@ class Agents:
         
         actions = []
         for i in range(self.n_robots):
-            if np.random.rand() < 0.1: # Epsilon-greedy exploration (0.1 epsilon)
+            if np.random.rand() < 0: # Epsilon-greedy exploration (0.1 epsilon)
                 joint_idx = np.random.randint(0, JOINT_ACTION_DIM)
             else:
                 # Pass self.persistent_packages to convert_state

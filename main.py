@@ -27,7 +27,7 @@ if __name__=="__main__":
     
     state = env.reset()
     observation_shape = (6, env.n_rows, env.n_cols)
-    agents = Agents(observation_shape, "models/dqn_agent_final.pt", "cuda")
+    agents = Agents(observation_shape, "models/mappo_final_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
     # print(state)

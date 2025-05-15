@@ -217,24 +217,34 @@ def convert_state(state, persistent_packages, current_robot_idx):
     return tensor
 
 # Define shaping reward/penalty constants
-SHAPING_SUCCESSFUL_PICKUP_BONUS = 1
-SHAPING_SUCCESSFUL_DELIVERY_BONUS = 10
-SHAPING_LATE_DELIVERY_PENALTY = -1  # Additional penalty for being late, on top of env's
-SHAPING_WASTED_PICKUP_PENALTY = -1 # Tried to pick from an empty spot or already carrying
-SHAPING_WASTED_DROP_PENALTY = -1   # Tried to drop when not carrying
+SHAPING_SUCCESSFUL_PICKUP_BONUS = 2
+SHAPING_SUCCESSFUL_DELIVERY_BONUS = 10 # All delivery rewards are given to the environment
+SHAPING_LATE_DELIVERY_PENALTY = -5  # Additional penalty for being late, on top of env's
+SHAPING_WASTED_PICKUP_PENALTY = -0.1 # Tried to pick from an empty spot or already carrying
+SHAPING_WASTED_DROP_PENALTY = 0   # Tried to drop when not carrying
+SHAPING_STAY_PENALTY = -0.1        # Penalty for staying in place
 
-def reward_shaping(global_r, prev_state, current_state, actions_taken, num_agents):
+
+def reward_shaping(prev_env_state, current_env_state, actions_taken, persistent_packages_before_action, num_agents):
     """
-    Shapes the global reward 'global_r' to produce individual rewards.
-    Requires prev_state to infer agent-specific events.
+    Shapes the global reward 'global_r' to produce individual rewards,
+    using a snapshot of the persistent package tracker from before the action.
 
     Args:
         global_r (float): The global reward from the environment for the current step (s -> s').
-        prev_state (dict): The state 's' before actions_taken.
-        current_state (dict): The state 's'' after actions_taken.
-        actions_taken (list): List of actions [action_agent_0, action_agent_1, ...]
-                              taken by agents that led from prev_state to current_state.
-                              Each action is (move_idx, package_op_idx).
+        prev_env_state (dict): The raw environment state 's' before actions_taken.
+                               Contains 'robots' (1-indexed pos) and 'time_step'.
+        current_env_state (dict): The raw environment state 's'' after actions_taken.
+                                  Contains 'robots' (1-indexed pos) and 'time_step'.
+        actions_taken (list): List of actions [(move_idx, package_op_idx), ...]
+                              taken by agents. package_op_idx is int (0:None, 1:Pick, 2:Drop).
+        persistent_packages_before_action (dict): 
+            A snapshot/copy of `self.persistent_packages` from *before* the current action.
+            Structure: { pkg_id: {'id': ..., 'start_pos': (r,c), 'target_pos': (r,c), 
+                                   'start_time': ..., 'deadline': ..., 
+                                   'status': 'waiting'/'in_transit'}, ... }
+            Positions are 0-indexed. 'status' is the status before this action.
+        num_agents (int): The number of agents.
 
     Returns:
         list: A list of shaped rewards, one for each agent.
@@ -242,67 +252,96 @@ def reward_shaping(global_r, prev_state, current_state, actions_taken, num_agent
     
     individual_rewards = [0.0] * num_agents
 
-    # Initialize individual rewards. Option A: Each gets the global reward.
     for i in range(num_agents):
-        individual_rewards[i] = global_r
+        individual_rewards[i] = 0 # Initialize 
 
-    # For easier access to package details by ID from the previous state
-    prev_packages_dict = {pkg[0]: pkg for pkg in prev_state['packages']}
-    current_time = current_state['time_step']
+    current_time_from_env = current_env_state['time_step']
+    # Ensure current_time_from_env is a scalar if it's an array (e.g. from reset)
+    if isinstance(current_time_from_env, np.ndarray):
+        current_time_from_env = current_time_from_env[0]
+    
+    # prev_env_state might not have 'time_step' if it's the very first state from reset
+    # or if not explicitly stored. We need a reliable previous time for package start_time checks.
+    # If prev_env_state['time_step'] is available and reliable, use it. Otherwise, current_time_from_env - 1.
+    # For simplicity, let's assume prev_env_state['time_step'] is the time *at* prev_env_state.
+    time_at_prev_state = prev_env_state.get('time_step', current_time_from_env -1)
+    if isinstance(time_at_prev_state, np.ndarray):
+        time_at_prev_state = time_at_prev_state[0]
+
 
     for i in range(num_agents):
         agent_action = actions_taken[i]
         package_op = agent_action[1]  # 0: None, 1: Pick, 2: Drop
+        
+        prev_robot_info = prev_env_state['robots'][i]
+        current_robot_info = current_env_state['robots'][i]
 
-        prev_robot_info = prev_state['robots'][i]
-        current_robot_info = current_state['robots'][i]
+        robot_prev_pos_0idx = (prev_robot_info[0] - 1, prev_robot_info[1] - 1)
+        robot_current_pos_0idx = (current_robot_info[0] - 1, current_robot_info[1] - 1)
+
+        # Phạt nếu agent không di chuyển (vị trí không đổi)
+        if robot_prev_pos_0idx == robot_current_pos_0idx:
+            individual_rewards[i] += SHAPING_STAY_PENALTY
+
+        if i >= len(prev_env_state['robots']) or i >= len(current_env_state['robots']):
+            # print(f"Warning: Agent {i} missing in state information. Skipping.") # For debugging
+            continue
+
+        prev_robot_info = prev_env_state['robots'][i]
+        current_robot_info = current_env_state['robots'][i]
+
+        robot_prev_pos_0idx = (prev_robot_info[0] - 1, prev_robot_info[1] - 1)
+        robot_current_pos_0idx = (current_robot_info[0] - 1, current_robot_info[1] - 1)
 
         prev_carrying_id = prev_robot_info[2]
         current_carrying_id = current_robot_info[2]
 
         # 1. Shaping for PICKUP attempts
-        if package_op == 1:  # Agent attempted to PICKUP
+        if package_op == 1:
             if prev_carrying_id == 0 and current_carrying_id != 0:
                 # Successfully picked up a package
                 individual_rewards[i] += SHAPING_SUCCESSFUL_PICKUP_BONUS
-            elif prev_carrying_id != 0 : # Tried to pick up while already carrying
+            elif prev_carrying_id != 0:
+                # Tried to pick up while already carrying
                 individual_rewards[i] += SHAPING_WASTED_PICKUP_PENALTY
             elif prev_carrying_id == 0 and current_carrying_id == 0:
-                # Attempted pickup but failed to pick up anything.
-                # Check if there was a package at the robot's previous location.
-                robot_prev_pos = (prev_robot_info[0], prev_robot_info[1])
-                package_was_available = False
-                for pkg_id, sr, sc, tr, tc, st, dl in prev_state['packages']:
-                    if (sr, sc) == robot_prev_pos:
-                        # A package was at the location. Maybe another agent took it, or it was a valid attempt.
-                        # No penalty here, or a smaller one for contention if desired.
-                        package_was_available = True
+                # Attempted pickup but failed (still not carrying).
+                # Check if a 'waiting' package was truly available at the robot's previous location.
+                package_was_available_and_waiting = False
+                for pkg_id, pkg_data in persistent_packages_before_action.items():
+                    if pkg_data['status'] == 'waiting' and \
+                       pkg_data['start_pos'] == robot_prev_pos_0idx and \
+                       pkg_data['start_time'] <= time_at_prev_state: # Package must be active
+                        package_was_available_and_waiting = True
                         break
-                if not package_was_available:
-                    # Tried to pick up from a location with no package
+                if not package_was_available_and_waiting:
                     individual_rewards[i] += SHAPING_WASTED_PICKUP_PENALTY
 
-
         # 2. Shaping for DROP attempts
-        elif package_op == 2:  # Agent attempted to DROP
+        elif package_op == 2:
             if prev_carrying_id != 0 and current_carrying_id == 0:
-                # Successfully delivered/dropped a package
-                individual_rewards[i] += SHAPING_SUCCESSFUL_DELIVERY_BONUS
+                # Successfully dropped the package (ID: prev_carrying_id)
+                dropped_pkg_id = prev_carrying_id
                 
-                # Check for timeliness if it was a delivery (package removed from list)
-                delivered_pkg_id = prev_carrying_id
-                # Check if this package ID is no longer in current_state['packages']
-                # (indicating it was a final delivery to target)
-                is_final_delivery = True
-                for pkg_data in current_state['packages']:
-                    if pkg_data[0] == delivered_pkg_id:
-                        is_final_delivery = False # Package still exists, maybe dropped not at target
-                        break
-                
-                if is_final_delivery and delivered_pkg_id in prev_packages_dict:
-                    pkg_deadline = prev_packages_dict[delivered_pkg_id][6]
-                    if current_time > pkg_deadline:
-                        individual_rewards[i] += SHAPING_LATE_DELIVERY_PENALTY
+                if dropped_pkg_id in persistent_packages_before_action:
+                    pkg_info = persistent_packages_before_action[dropped_pkg_id]
+                    pkg_target_pos_0idx = pkg_info['target_pos']
+                    pkg_deadline = pkg_info['deadline']
+
+                    # Check if the drop was at THE carried package's target location
+                    if robot_current_pos_0idx == pkg_target_pos_0idx:
+                        individual_rewards[i] += SHAPING_SUCCESSFUL_DELIVERY_BONUS
+                        if current_time_from_env > pkg_deadline: # current_time_from_env is time t AFTER action
+                            individual_rewards[i] += SHAPING_LATE_DELIVERY_PENALTY
+                    # else:
+                        # Dropped, but not at its specific target.
+                        # No specific shaping here, but it won't get delivery bonus.
+                        # Could add a penalty if desired for dropping at wrong location.
+                # else:
+                    # This case should ideally not happen if persistent_packages_before_action
+                    # correctly reflects the state.
+                    # print(f"Warning: Agent {i} dropped pkg_id {dropped_pkg_id} which is not in persistent_packages_before_action.")
+            
             elif prev_carrying_id == 0:
                 # Tried to drop when not carrying anything
                 individual_rewards[i] += SHAPING_WASTED_DROP_PENALTY
