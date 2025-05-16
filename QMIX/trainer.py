@@ -18,6 +18,7 @@ from QMIX.helper import (
     save_qmix_model, load_qmix_model
 )
 from env_vectorized import VectorizedEnv # Assuming this is your vectorized environment
+from marl_delivery.env import Environment
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -538,6 +539,11 @@ class QMixLearner:
 # --- Main Training Script ---
 if __name__ == "__main__":
     args = Args() # Load hyperparameters
+    # Print all args before training
+    print("========== QMIX CONFIGURATION ==========")
+    for k, v in vars(args).items():
+        print(f"{k}: {v}")
+    print("========================================")
     print(f"Using device: {device}")
     # --- Environment and Action Conversion Setup ---
     MAP_FILE = args.map_file if hasattr(args, "map_file") else "QMIX/marl_delivery/map1.txt"
@@ -566,8 +572,6 @@ if __name__ == "__main__":
     # --- Determine Observation and State Shapes ---
     print("Initializing temporary environment to get observation/state shapes...")
     try:
-        # Use a single instance of the environment to get shapes
-        from env import Environment
         _temp_env = Environment(
             map_file=MAP_FILE,
             n_robots=args.n_agents,

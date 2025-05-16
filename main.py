@@ -2,7 +2,7 @@ from MAPPO.helper import generate_vector_features
 from env import Environment
 from agent import Agents as Agents
 from greedyagent import GreedyAgents as GreedyAgents
-from dqn.networks import convert_state
+from MAPPO.helper import convert_observation
 
 import numpy as np
 import time
@@ -132,16 +132,16 @@ if __name__=="__main__":
             print(f"Warning: plot_robot_idx {plot_robot_idx} is out of bounds for {args.num_agents} agents. Defaulting to 0.")
             plot_robot_idx = 0
             
-        final_tensor_observation = convert_state(state, final_pkgs, current_robot_idx=plot_robot_idx)
+        final_tensor_observation = convert_observation(state, final_pkgs, current_robot_idx=plot_robot_idx)
 
         # Updated channel names for the 6-channel representation
         channel_names_plot = [
-            "Map (1=obstacle, 0=empty)",
-            "Urgency (Waiting Pkgs, if not carrying)",
-            "Start Pos (Waiting Pkgs, if not carrying)",
-            "Other Robots' Positions",
-            f"Robot {plot_robot_idx}'s Position",
-            f"Robot {plot_robot_idx}'s Carried Pkg Target (if carrying)",
+            "Obstacle map (1=obstacle, 0=empty)",
+            "Current robot position",
+            "Other robots' positions",
+            "Waiting packages' start positions",
+            "Active packages' target positions (waiting or in transit)",
+            "Current robot's carried package target position",
         ]
 
         n_channels_plot = final_tensor_observation.shape[0]
