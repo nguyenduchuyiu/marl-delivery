@@ -289,8 +289,8 @@ class ReplayBuffer:
             self.current_size += 1
 
     def sample(self):
-        if self.current_size < self.args.min_buffer_size_to_train:
-             raise ValueError(f"Replay buffer has {self.current_size} episodes, less than min buffer size to train {self.args.min_buffer_size_to_train}. Cannot sample.")
+        if self.current_size < self.args.min_buffer_size_to_train or self.current_size < self.args.batch_size:
+            raise ValueError(f"Replay buffer has {self.current_size} episodes, less than min buffer size to train {self.args.min_buffer_size_to_train} or batch size {self.args.batch_size}. Cannot sample.")
 
 
         indices = np.random.choice(self.current_size, self.args.batch_size, replace=False)
@@ -315,7 +315,7 @@ class ReplayBuffer:
         return batch
 
     def can_sample(self):
-        return self.current_size >= self.args.min_buffer_size_to_train
+        return self.current_size >= self.args.min_buffer_size_to_train and self.current_size >= self.args.batch_size
 
     def __len__(self):
         return self.current_size
