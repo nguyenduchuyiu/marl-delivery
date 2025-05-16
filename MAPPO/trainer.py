@@ -39,30 +39,29 @@ random.seed(SEED)
 # --- MAPPO Hyperparameters ---
 ACTION_DIM = 15  # Total discrete actions for an agent
 NUM_AGENTS = 5
-MAP_FILE = "MAPPO/marl_delivery/map1.txt"
-N_PACKAGES = 20
+MAP_FILE = "marl_delivery/map1.txt"
+N_PACKAGES = 50
 MOVE_COST = -0.01 # Adjusted for PPO, rewards should be reasonably scaled
 DELIVERY_REWARD = 10
 DELAY_REWARD = 1 # Or 0, depending on reward shaping strategy
 MAX_TIME_STEPS_PER_EPISODE = 500 # Max steps for one episode in one env
-0
+
 NUM_ENVS = 5  # Number of parallel environments
 ROLLOUT_STEPS = 500 # Number of steps to collect data for before an update
 TOTAL_TIMESTEPS = 1_000_000 # Total timesteps for training
 
 # PPO specific
-LR_ACTOR = 5e-5
-LR_CRITIC = 5e-5
+LR_ACTOR = 1e-5
+LR_CRITIC = 1e-5
 GAMMA = 0.99
 GAE_LAMBDA = 0.95
 CLIP_EPS = 0.2
-NUM_EPOCHS = 10 # Number of epochs to train on collected data
-MINIBATCH_SIZE = 128 # Minibatch size for PPO updates
+NUM_EPOCHS = 5 # Number of epochs to train on collected data
+MINIBATCH_SIZE = 64 # Minibatch size for PPO updates
 ENTROPY_COEF = 0.01
 VALUE_LOSS_COEF = 0.5
 MAX_GRAD_NORM = 0.5
-WEIGHT_DECAY = 1e-3
-
+WEIGHT_DECAY = 1e-4
 
 class MAPPOTrainer:
     def __init__(self, vec_env, num_agents, action_dim, obs_shape, global_state_shape,
