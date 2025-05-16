@@ -1,0 +1,65 @@
+# qmix_config.yaml
+
+# Environment parameters
+n_agents: 5                   # Number of agents in the environment
+n_packages: 20                # Number of packages in the environment
+max_time_steps_env: 100      # Maximum time steps per environment episode
+render: true                  # Whether to render the environment
+delivery_reward: 10          # Reward for delivering a package
+delay_reward: 1             # Reward for delaying a package
+move_cost: -0.01               # Cost for moving
+map_file: "QMIX/marl_delivery/map1.txt"
+
+
+# Network architecture parameters
+rnn_hidden_dim: 64            # Hidden dimension for the RNN in agent networks
+mixing_embed_dim: 32          # Embedding dimension for the mixing network
+hypernet_embed: 64            # Embedding dimension for the hypernetwork
+
+# Optimization parameters
+lr: 0.0005                    # Learning rate for the optimizer
+optim_alpha: 0.99             # Alpha parameter for RMSprop optimizer
+grad_norm_clip: 10            # Gradient norm clipping value
+
+# Training and target update parameters
+gamma: 0.99                   # Discount factor for future rewards
+target_update_type: "hard"    # Type of target network update ("hard" or "soft")
+target_update_interval: 200   # Interval (in steps) for hard target updates
+tau: 0.005                    # Soft update coefficient (if using soft updates)
+hard_target_update: true      # Whether to use hard target updates
+
+# Replay buffer and training loop parameters
+num_parallel_envs: 4          # Number of parallel environments for data collection
+buffer_size: 1000             # Maximum size of the replay buffer
+batch_size: 64              # Batch size for training
+episode_limit: 1000            # Maximum steps per episode
+min_timesteps_to_train: 1000  # Minimum timesteps before training starts
+min_buffer_size_to_train: 50 # Minimum buffer size before training starts
+max_training_iterations: 1000 # Maximum number of training iterations
+max_total_timesteps: 500000   # Maximum total timesteps for training
+
+# Exploration parameters
+epsilon_start: 1.0            # Initial epsilon for epsilon-greedy exploration
+epsilon_finish: 0.05          # Final epsilon value
+epsilon_anneal_time: 500000   # Number of timesteps over which to anneal epsilon
+use_epsilon_greedy: true      # Whether to use epsilon-greedy exploration
+
+# Training step parameters
+num_train_steps_per_iteration: 8 # Number of training steps per iteration
+
+# Logging and saving
+log_interval: 10              # Interval (in iterations) for logging
+save_model_interval: 100      # Interval (in iterations) for saving the model
+
+# Environment observation parameters
+max_other_robots_to_observe: 4    # Max number of other robots each agent can observe
+max_packages_to_observe: 5        # Max number of packages each agent can observe
+max_robots_in_state: 10           # Max number of robots in the state representation
+max_packages_in_state: 20         # Max number of packages in the state representation
+
+# Miscellaneous
+seed: 42                      # Random seed for reproducibility
+
+# Model loading
+load_model_path: null         # Path to load a pre-trained model (if any)
+load_model_episode: 0         # Episode number to load the model from

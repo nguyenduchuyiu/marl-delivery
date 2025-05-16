@@ -1,3 +1,4 @@
+from MAPPO.helper import generate_vector_features
 from env import Environment
 from agent import Agents as Agents
 from greedyagent import GreedyAgents as GreedyAgents
@@ -27,7 +28,8 @@ if __name__=="__main__":
     
     state = env.reset()
     observation_shape = (6, env.n_rows, env.n_cols)
-    agents = Agents(observation_shape, "models/mappo_final_actor.pt", "cpu")
+    vector_obs_dim = generate_vector_features(state, {}, 0, args.max_time_steps).shape[0]
+    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "models/mappo_final_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
     # print(state)

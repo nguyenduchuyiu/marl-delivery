@@ -1,5 +1,8 @@
 # import numpy as np
 # Run a BFS to find the path from start to goal
+import numpy as np
+
+
 def run_bfs(map, start, goal):
     n_rows = len(map)
     n_cols = len(map[0])
@@ -115,6 +118,11 @@ class GreedyAgents:
         self.packages_free += [True] * len(state['packages'])    
 
     def get_actions(self, state):
+        if np.random.rand() < 0.1:
+            moves = np.random.choice(['U', 'D', 'L', 'R'], size=self.n_robots)
+            pkg_ops = np.random.choice(['0', '1'], size=self.n_robots)
+            return list(zip(moves, pkg_ops))
+        
         if self.is_init == False:
             # This mean we have invoke the init agents, use the update_inner_state to update the state
             self.is_init = True
