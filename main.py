@@ -3,6 +3,7 @@ from env import Environment
 from agent import Agents as Agents
 from greedyagent import GreedyAgents as GreedyAgents
 from MAPPO.helper import convert_observation
+from MAPPO.helper import compute_shaped_rewards
 
 import numpy as np
 import time
@@ -29,7 +30,7 @@ if __name__=="__main__":
     state = env.reset()
     observation_shape = (6, env.n_rows, env.n_cols)
     vector_obs_dim = generate_vector_features(state, {}, 0, args.max_time_steps).shape[0]
-    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "models/mappo_final_actor.pt", "cpu")
+    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_update300_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
     # print(state)
@@ -42,7 +43,7 @@ if __name__=="__main__":
     infos = {}
 
     while not done:
-        actions = agents.get_actions(state)
+        actions = agents.get_actions(state, deterministic=False)
         print("Actions passed to env:", actions)
         # `current_done` and `current_infos` are from this specific step
         next_state, reward, current_done, current_infos = env.step(actions)

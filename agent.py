@@ -74,7 +74,7 @@ class Agents:
         self._update_persistent_packages(state) # Initialize/update based on initial state
         self.is_init = True
 
-    def get_actions(self, state):
+    def get_actions(self, state, deterministic=True):
         assert self.is_init, "Agents not initialized. Call init_agents(state) first."
         
         # Update persistent packages based on the current state
@@ -82,20 +82,26 @@ class Agents:
         
         actions = []
         for i in range(self.n_robots):
-            if np.random.rand() < 0.1: # Epsilon-greedy exploration (0.1 epsilon)
-                joint_idx = np.random.randint(0, JOINT_ACTION_DIM)
-            else:
-                # Pass self.persistent_packages to convert_state
-                obs = convert_observation(state, self.persistent_packages, current_robot_idx=i)
-                vector_obs = generate_vector_features(state, self.persistent_packages, i, self.max_time_steps)
-                obs_t = torch.tensor(obs, dtype=torch.float32).to(self.device)
-                vector_obs_t = torch.tensor(vector_obs, dtype=torch.float32).to(self.device)
-                if obs_t.dim() == 3: # Ensure batch dimension if not present
-                    obs_t = obs_t.unsqueeze(0)
-                    vector_obs_t = vector_obs_t.unsqueeze(0)
-                with torch.no_grad():
-                    logits = self.model(obs_t, vector_obs_t)  # shape [1, JOINT_ACTION_DIM]
+            # Prepare observation and vector features
+            obs = convert_observation(state, self.persistent_packages, current_robot_idx=i)
+            vector_obs = generate_vector_features(
+                state, 
+                self.persistent_packages, 
+                i, 
+                self.max_time_steps,
+            )
+            obs_t = torch.tensor(obs, dtype=torch.float32).to(self.device)
+            vector_obs_t = torch.tensor(vector_obs, dtype=torch.float32).to(self.device)
+            if obs_t.dim() == 3:
+                obs_t = obs_t.unsqueeze(0)
+                vector_obs_t = vector_obs_t.unsqueeze(0)
+            with torch.no_grad():
+                logits = self.model(obs_t, vector_obs_t)  # shape [1, JOINT_ACTION_DIM]
+                if deterministic:
                     joint_idx = logits.argmax(dim=1).item()
+                else:
+                    probs = torch.softmax(logits, dim=1)
+                    joint_idx = torch.multinomial(probs, num_samples=1).item()
             
             # decode joint index
             move_idx   = joint_idx % NUM_MOVE_ACTIONS

@@ -267,15 +267,16 @@ def compute_shaped_rewards(
     Returns: tổng shaped reward (float), và shaped reward từng agent (np.array)
     """
     # --- Shaping Constants ---
-    SHAPING_SUCCESSFUL_PICKUP = 0.5
-    SHAPING_SUCCESSFUL_DELIVERY_ON_TIME = 2.0
-    SHAPING_SUCCESSFUL_DELIVERY_LATE = 0.2
+    # --- Shaping Constants ---
+    SHAPING_SUCCESSFUL_PICKUP = 5
+    SHAPING_SUCCESSFUL_DELIVERY_ON_TIME = 200
+    SHAPING_SUCCESSFUL_DELIVERY_LATE = 20
     SHAPING_MOVED_CLOSER_TO_TARGET = 0.02
-    SHAPING_WASTED_PICKUP_ATTEMPT = -0.1
-    SHAPING_WASTED_DROP_ATTEMPT = -0.1
+    SHAPING_WASTED_PICKUP_ATTEMPT = 0
+    SHAPING_WASTED_DROP_ATTEMPT = 0
     SHAPING_COLLISION_OR_STUCK = -0.05
-    SHAPING_IDLE_WITH_AVAILABLE_TASKS = -0.02
-    SHAPING_MOVED_AWAY_FROM_TARGET = -0.02
+    SHAPING_IDLE_WITH_AVAILABLE_TASKS = -0.05
+    SHAPING_MOVED_AWAY_FROM_TARGET = -0.01
 
     shaped_rewards = np.zeros(num_agents, dtype=np.float32)
     current_time = int(current_env_state_dict['time_step'])
