@@ -71,9 +71,9 @@ Each agent (robot) uses local observations, while the shared critic uses a globa
     *   Movements: Stay, Left, Right, Up, Down.
     *   Package Ops: Do Nothing, Pick Up, Drop.
 *   **Reward Shaping:** To guide learning, we add shaped rewards for:
-    *   Successful pickup: `+5`
-    *   Successful on-time delivery: `+200` (base `+10` + shaped `+190`)
-    *   Successful late delivery: `+20` (base `+1` + shaped `+19`)
+    *   Successful pickup bonus: `+5`
+    *   Successful on-time delivery bonus: `+200`
+    *   Successful late delivery bonus: `+20`
     *   Moving closer to task-relevant targets (e.g., package to pick up, or destination for carried package): `+0.02`
     *   Penalties for collisions or unproductive idle behavior: `-0.05`
     *   Penalty for moving away from task-relevant targets: `-0.01`
@@ -165,15 +165,29 @@ Package Target (Red Square) | Delivered Target (Gray Square) | Waiting Package (
     cd marl-delivery
     ```
 2.  **Training:**
-    *   The primary training script is `marl-delivery-mappo.ipynb`.
+    *   The primary training script is `MAPPO/marl-delivery-mappo.ipynb`.
     *   Configure hyperparameters within the notebook.
-    *   Run the notebook cells. Models are saved periodically to the `models/` directory (e.g., `models/mappo_update100_actor.pt`, `models/mappo_final_actor.pt`).
+    *   Run the notebook cells. Models are saved periodically to the `MAPPO/models/` directory (e.g., `MAPPO/models/mappo_update100_actor.pt`, `MAPPO/models/mappo_final_actor.pt`).
 3.  **Evaluation / Testing:**
-    *   The notebook also contains sections for loading pre-trained models and visualizing agent behavior.
-    *   For standalone evaluation or running on different maps using a pre-trained model, you might adapt the `main.py` script (if it's intended for this purpose) or create a new evaluation script that loads the `ActorNetwork` and simulates the environment. Example (conceptual):
+
+    To evaluate the trained MAPPO agent and compare its performance against Greedy and Random agents, run the `evaluation.py` script with the desired parameters.  Here's an example command:
+
     ```bash
-    python evaluate.py --model_path models/mappo_final --map map_config/map2.txt --num_agents 5
+    python evaluation.py --seed 10 --max_time_steps 1000 --map map1.txt --num_agents 5 --n_packages 100 --num_test_episodes 100
     ```
+
+    **Arguments:**
+
+    *   `--seed`:  The random seed for environment generation and agent initialization.  Using the same seed ensures consistent environments across evaluation runs.
+    *   `--max_time_steps`: The maximum number of time steps allowed per episode.
+    *   `--map`: The name of the map file to use (e.g., `map1.txt`).
+    *   `--num_agents`: The number of agents (robots) in the environment.
+    *   `--n_packages`: The number of packages that will spawn during each episode.
+    *   `--num_test_episodes`: The number of episodes to run for each agent type (MAPPO, Greedy, Random) to collect performance statistics.
+    *   `--mappo_model_path`: (Optional) Path to the trained MAPPO actor model. Defaults to `MAPPO/models/mappo_final_actor.pt`.
+    *   `--device`: (Optional) Device to run the MAPPO model on (e.g., `cpu`, `cuda`). Defaults to `cpu`.
+
+    The script will output the mean and standard deviation of reward, number of delivered packages, and delivery rate for each agent type.  It will also generate a plot comparing the performance of the agents.
 
 ---
 
