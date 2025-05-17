@@ -15,19 +15,6 @@ This project implements a multi-agent system for efficient package delivery in a
 
 ---
 
-## Demo: MAPPO vs. Greedy Agent
-
-**Legend:**
-Obstacles (Gray Blocks) | Robot Empty (Blue Circle) | Robot Carrying (Orange Circle + Small Green Square)
-Package Target (Red Square) | Delivered Target (Gray Square) | Waiting Package (Green Square)
-
-| Greedy Agent (Baseline)                                     | MAPPO Agent (Our Solution)                                      |
-| :----------------------------------------------------------: | :-------------------------------------------------------------: |
-| [![Greedy Simulation](demo/greedy_simulation.gif)](demo/greedy_simulation.mp4) | [![MAPPO Simulation](demo/mappo_simulation.gif)](demo/mappo_simulation.mp4) |
-| *Robots use a simple heuristic.*                             | *Robots learn a coordinated policy.*                            |
-
----
-
 ## Table of Contents
 
 1.  [Problem Details](#problem-details)
@@ -99,6 +86,19 @@ Each agent (robot) uses local observations, while the shared critic uses a globa
 *   **Baseline (Greedy Agent):** Robots follow simple heuristics (e.g., move to the nearest package, then to its destination).
 *   **MAPPO Agent:** After training for 1,000,000 timesteps, the MAPPO agents demonstrate significantly improved coordination and efficiency, leading to higher overall rewards compared to the greedy baseline. They learn to navigate, pick up, deliver, and adapt to new packages effectively.
     *   *(Example training progress: Average rollout reward across 5 environments increased substantially, often exceeding 1500-2000 per 500-step rollout in later stages.)*
+
+---
+
+### Demo: MAPPO vs. Greedy Agent
+
+**Legend:**
+Obstacles (Gray Blocks) | Robot Empty (Blue Circle) | Robot Carrying (Orange Circle + Small Green Square)
+Package Target (Red Square) | Delivered Target (Gray Square) | Waiting Package (Green Square)
+
+| Greedy Agent (Baseline)                                     | MAPPO Agent (Our Solution)                                      |
+| :----------------------------------------------------------: | :-------------------------------------------------------------: |
+| [![Greedy Simulation](demo/greedy_simulation.gif)](demo/greedy_simulation.mp4) | [![MAPPO Simulation](demo/mappo_simulation.gif)](demo/mappo_simulation.mp4) |
+| *Robots use a simple heuristic.*                             | *Robots learn a coordinated policy.*                            |
 
 ---
 
