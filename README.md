@@ -142,10 +142,11 @@ Visual inspection of agent behavior further highlights the learned capabilities.
 Obstacles (Gray Blocks) | Robot Empty (Blue Circle) | Robot Carrying (Orange Circle + Small Green Square)
 Package Target (Red Square) | Delivered Target (Gray Square) | Waiting Package (Green Square)
 
-| Greedy Agent (Baseline)                                     | MAPPO Agent (Our Solution)                                      |
-| :----------------------------------------------------------: | :-------------------------------------------------------------: |
-| [![Greedy Simulation](demo/greedy_simulation.gif)](demo/greedy_simulation.mp4) | [![MAPPO Simulation](demo/mappo_simulation.gif)](demo/mappo_simulation.mp4) |
-| *Robots use a simple heuristic, often leading to inefficient paths and congestion.* | *Robots exhibit coordinated movement, proactive package acquisition, and efficient delivery routes.* |
+| Agent Type | Simulation | Description |
+|---|---|---|
+| Greedy Agent (Baseline) | [![Greedy Simulation](demo/greedy_simulation.gif)](demo/greedy_simulation.gif) | Robots use a simple heuristic, often leading to inefficient paths and congestion. Click the image to view the simulation. |
+| MAPPO Agent (Our Solution) | [![MAPPO Simulation](demo/mappo_simulation.gif)](demo/mappo_simulation.gif) | Robots exhibit coordinated movement, proactive package acquisition, and efficient delivery routes. Click the image to view the simulation. |
+| Random Agent (Baseline) | [![Random Simulation](demo/random_simulation.gif)](demo/random_simulation.gif) | Robots act randomly, resulting in highly inefficient and uncoordinated behavior. Click the image to view the simulation. |
 
 ---
 
