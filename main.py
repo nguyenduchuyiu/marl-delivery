@@ -11,6 +11,8 @@ import pygame
 import matplotlib.pyplot as plt
 import imageio
 
+from randomagent import RandomAgents
+
 if __name__=="__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Multi-Agent Reinforcement Learning for Delivery")
@@ -32,8 +34,8 @@ if __name__=="__main__":
     observation_shape = (6, env.n_rows, env.n_cols)
     vector_obs_dim = generate_vector_features(state, {}, 0, args.max_time_steps).shape[0]
     print(vector_obs_dim)
-    # exit()
-    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_update300_actor.pt", "cpu")
+    # agents = RandomAgents()
+    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_final_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
     env.render()
@@ -178,7 +180,7 @@ if __name__=="__main__":
     # --- Save frames to mp4 after episode ends ---
     if frames:
         try:
-            output_filename = "mappo_simulation.mp4"
+            output_filename = "random_simulation.mp4"
             # fps = 10 (100ms per frame)
             imageio.mimsave(output_filename, frames, fps=10)
             print(f"Video saved to {output_filename}")

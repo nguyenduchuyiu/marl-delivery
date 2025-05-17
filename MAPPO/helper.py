@@ -67,7 +67,7 @@ def convert_observation(env_state_dict, persistent_packages_for_env, current_rob
 
 def generate_vector_features(env_state_dict, persistent_packages_for_env, current_robot_idx,
                             max_time_steps,
-                            max_other_robots_to_observe=4, max_packages_to_observe=5):
+                            max_other_robots_to_observe=100, max_packages_to_observe=100):
     """
     Sinh vector đặc trưng phi không gian cho 1 robot.
     """
