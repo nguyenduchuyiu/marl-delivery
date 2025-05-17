@@ -9,6 +9,7 @@ import numpy as np
 import time
 import pygame
 import matplotlib.pyplot as plt
+import imageio
 
 if __name__=="__main__":
     import argparse
@@ -30,17 +31,16 @@ if __name__=="__main__":
     state = env.reset()
     observation_shape = (6, env.n_rows, env.n_cols)
     vector_obs_dim = generate_vector_features(state, {}, 0, args.max_time_steps).shape[0]
+    print(vector_obs_dim)
+    # exit()
     agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_update300_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
-    # print(state)
     env.render()
     done = False
     t = 0
-    # `infos` will be from the last call to env.step().
-    # It's only guaranteed to be fully populated by env.step if `done` is True from that step.
-    # We initialize it here; it will be updated during the loop.
     infos = {}
+    frames = []  # List to store frames for video
 
     while not done:
         actions = agents.get_actions(state, deterministic=False)
@@ -59,12 +59,17 @@ if __name__=="__main__":
         if not done:
             try:
                 env.render_pygame()
-                pygame.time.wait(100)  # 100 ms pause for visibility
+                # --- Capture frame from pygame display ---
+                surface = pygame.display.get_surface()
+                if surface is not None:
+                    frame = pygame.surfarray.array3d(surface)
+                    # Pygame's array3d returns (width, height, 3), need to transpose to (height, width, 3)
+                    frame = np.transpose(frame, (1, 0, 2))
+                    frames.append(frame)
+                # pygame.time.wait(100)  # 100 ms pause for visibility
             except pygame.error as e:
                 print(f"Pygame window closed or error during rendering: {e}. Ending simulation.")
-                done = True # Signal to terminate the loop
-                # If the environment hadn't already signaled 'done' via current_done,
-                # we need to populate `infos` with the current environment state for the final print.
+                done = True
                 if not current_done:
                     infos['total_reward'] = env.total_reward
                     infos['total_time_steps'] = env.t
@@ -169,5 +174,15 @@ if __name__=="__main__":
         print(f"Plotting skipped: {e}")
     except Exception as e:
         print(f"An error occurred during plotting: {e}")
+
+    # --- Save frames to mp4 after episode ends ---
+    if frames:
+        try:
+            output_filename = "mappo_simulation.mp4"
+            # fps = 10 (100ms per frame)
+            imageio.mimsave(output_filename, frames, fps=10)
+            print(f"Video saved to {output_filename}")
+        except Exception as e:
+            print(f"Error saving video: {e}")
 
     pygame.quit()
