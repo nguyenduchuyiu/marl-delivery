@@ -1,6 +1,7 @@
 #env.py
 import numpy as np
 import pygame
+import os
 
 class Robot: 
     def __init__(self, position): 
@@ -358,12 +359,14 @@ class Environment:
         for row in grid_copy:
             print('\t'.join(str(cell) for cell in row))
         
-    def render_pygame(self, cell_size=40):
+    def render_pygame(self, cell_size=40, window_pos=(100, 100)):
         import pygame
 
         n_rows = len(self.grid)
         n_cols = len(self.grid[0])
         if not hasattr(self, '_pygame_initialized'):
+            # Set window position before pygame.init() and before creating the window
+            os.environ['SDL_VIDEO_WINDOW_POS'] = f"{window_pos[0]},{window_pos[1]}"
             pygame.init()
             self._cell_size = cell_size
             self._screen = pygame.display.set_mode(
@@ -457,38 +460,35 @@ class Environment:
         # pygame.time.wait(400)  # 400 ms pause for slower rendering
 
 if __name__=="__main__":
-    env = Environment('map.txt', 10, 2, 5)
-    state = env.reset()
-    print("Initial State:", state)
-    print("Initial State:")
-    env.render()
+    # Define map files and window positions for 4 environments
+    map_files = ['map.txt', 'map2.txt', 'map3.txt', 'map4.txt']
+    window_positions = [(100, 100), (600, 100), (100, 600), (600, 600)]
 
-    # Agents
-    # Initialize agents
+    # Create 4 environments
+    envs = [Environment(map_file, 1000, 2, 5, seed=2025+i) for i, map_file in enumerate(map_files)]
+    states = [env.reset() for env in envs]
+
+    # Initialize agents for each environment
     from greedyagent import GreedyAgents as Agents
-    agents = Agents()   # You should define a default parameters here
-    agents.init_agents(state) # You have a change to init states which can be used or not. Depend on your choice
+    agents_list = [Agents() for _ in envs]
+    for agents, state in zip(agents_list, states):
+        agents.init_agents(state)
     print("Agents initialized.")
-    
-    # Example actions for robots
-    list_actions = ['S', 'L', 'R', 'U', 'D']
-    n_robots = len(state['robots'])
-    done = False
-    t = 0
-    while not done:
-        actions = agents.get_actions(state) 
-        state, reward, done, infos = env.step(actions)
-    
-        print("\nState after step:")
-        env.render()
-        print(f"Reward: {reward}, Done: {done}, Infos: {infos}")
-        print("Total Reward:", env.total_reward)
-        print("Time step:", env.t)
-        print("Packages:", state['packages'])
-        print("Robots:", state['robots'])
 
-        # For debug purpose
+    done = [False] * len(envs)
+    t = 0
+    while not all(done):
+        for i, env in enumerate(envs):
+            if not done[i]:
+                actions = agents_list[i].get_actions(states[i])
+                states[i], reward, done[i], infos = env.step(actions)
+                env.render_pygame(cell_size=40, window_pos=window_positions[i])
+                print(f"\nEnv {i} | Reward: {reward}, Done: {done[i]}, Infos: {infos}")
+                print("Total Reward:", env.total_reward)
+                print("Time step:", env.t)
+                print("Packages:", states[i]['packages'])
+                print("Robots:", states[i]['robots'])
         t += 1
-        if t == 100:
+        if t == 1000:
             break
     

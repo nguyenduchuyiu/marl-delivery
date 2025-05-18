@@ -35,7 +35,7 @@ if __name__=="__main__":
     vector_obs_dim = generate_vector_features(state, {}, 0, args.max_time_steps).shape[0]
     print(vector_obs_dim)
     # agents = RandomAgents()
-    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_final_actor.pt", "cpu")
+    agents = Agents(observation_shape, vector_obs_dim, args.max_time_steps, "MAPPO/models/mappo_map1_actor.pt", "cpu")
     # agents = GreedyAgents()
     agents.init_agents(state)
     env.render()
@@ -144,7 +144,7 @@ if __name__=="__main__":
 
         # Updated channel names for the 6-channel representation
         channel_names_plot = [
-            "Obstacle map (1=obstacle, 0=empty)",
+            "Obstacle map (1=obstacle, 0=empty)"
             "Current robot position",
             "Other robots' positions",
             "Waiting packages' start positions",
